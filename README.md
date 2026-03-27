@@ -33,6 +33,21 @@ This paradigm combines:
 
 ## Quick Start
 
+### GUI Mode (Recommended)
+
+```bash
+python main.py --gui
+```
+
+The GUI provides a visual interface with:
+- Research question input
+- Hypothesis generation and browsing
+- Human validation interface
+- Real-time experiment execution
+- Evaluation results display
+
+### CLI Mode
+
 ```bash
 # Run demo
 python main.py --demo
@@ -50,16 +65,19 @@ python main.py -q "Effect of caffeine on attention" --generate
 KTautoresearch/
 ├── core/
 │   ├── hypothesis_generator.py   # AI generates scientific hypotheses
-│   ├── human_validator.py         # Human validation interface
-│   ├── experiment_executor.py      # AI executes experiments
-│   └── evaluator.py                # AI evaluates results
-├── workspace/                     # Working directory
-│   ├── hypotheses/                # Generated hypotheses
-│   ├── experiments/                # Experiment results
-│   ├── validation/                 # Validation records
-│   └── evaluation/                 # Evaluation reports
-├── program.md                      # AI agent instructions
-└── main.py                         # Entry point
+│   ├── human_validator.py        # Human validation interface
+│   ├── experiment_executor.py    # AI executes experiments
+│   └── evaluator.py              # AI evaluates results
+├── workspace/                    # Working directory
+│   ├── hypotheses/               # Generated hypotheses
+│   ├── experiments/              # Experiment results
+│   ├── validation/               # Validation records
+│   └── evaluation/               # Evaluation reports
+├── program.md                    # AI agent instructions
+├── main.py                       # Entry point (launches GUI or CLI)
+├── gui.py                        # Graphical User Interface
+└── ktcli.py                      # Command Line Interface
+```
 ```
 
 ## Workflow Phases

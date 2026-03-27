@@ -5,297 +5,13 @@ KTautoresearch - Main Entry Point
 Scientific Hypothesis Generation and Autonomous Experimentation System
 
 Usage:
-    python main.py --question "Your research question"
-    python main.py --generate          # Generate hypotheses only
-    python main.py --validate          # Run validation interface
-    python main.py --experiment        # Run experiments on validated hypotheses
-    python main.py --evaluate          # Evaluate all results
-    python main.py --demo              # Run a demo workflow
+    python main.py --gui           # Launch GUI version (Recommended)
+    python main.py --cli           # Run in command-line mode
+    python main.py --demo          # Run demo workflow
 """
 
 import argparse
-import json
-import os
 import sys
-from datetime import datetime
-from typing import List, Optional
-
-from core import (
-    HypothesisGenerator,
-    ScientificHypothesis,
-    HumanValidator,
-    ValidationDecision,
-    ExperimentExecutor,
-    ExperimentDesign,
-    Evaluator,
-    EvaluationResult,
-    EvaluationVerdict,
-    HypothesisStatus
-)
-
-
-class KTautoresearch:
-    def __init__(
-        self,
-        workspace_path: str = "./workspace",
-        research_question: Optional[str] = None
-    ):
-        self.workspace_path = workspace_path
-        self.research_question = research_question
-        self.hypothesis_generator = HypothesisGenerator()
-        self.human_validator = HumanValidator(
-            workspace_path=os.path.join(workspace_path, "validation")
-        )
-        self.experiment_executor = ExperimentExecutor(
-            workspace_path=os.path.join(workspace_path, "experiments"),
-            max_iterations=5,
-            time_budget_per_experiment=60
-        )
-        self.evaluator = Evaluator(workspace_path=workspace_path)
-        self.hypotheses: List[ScientificHypothesis] = []
-
-    def setup_workspace(self):
-        os.makedirs(os.path.join(self.workspace_path, "hypotheses"), exist_ok=True)
-        os.makedirs(os.path.join(self.workspace_path, "experiments"), exist_ok=True)
-        os.makedirs(os.path.join(self.workspace_path, "validation"), exist_ok=True)
-        os.makedirs(os.path.join(self.workspace_path, "evaluation"), exist_ok=True)
-        print(f"Workspace initialized at: {self.workspace_path}")
-
-    def generate_hypotheses(
-        self,
-        num_hypotheses: int = 5,
-        domain_knowledge: str = ""
-    ) -> List[ScientificHypothesis]:
-        if not self.research_question:
-            print("Error: No research question set. Use --question or set research_question.")
-            return []
-
-        print("\n" + "="*60)
-        print("PHASE 1: HYPOTHESIS GENERATION")
-        print("="*60)
-        print(f"Research Question: {self.research_question}")
-        print(f"Generating {num_hypotheses} hypotheses...\n")
-
-        hypotheses = self.hypothesis_generator.generate_hypotheses(
-            research_question=self.research_question,
-            domain_knowledge=domain_knowledge,
-            num_hypotheses=num_hypotheses
-        )
-
-        self.hypotheses = hypotheses
-
-        for h in hypotheses:
-            self._save_hypothesis(h)
-            print(f"Generated: [{h.id}] {h.title}")
-
-        print(f"\n{len(hypotheses)} hypotheses generated and saved.")
-        return hypotheses
-
-    def validate_hypotheses(
-        self,
-        validator_name: str = "researcher"
-    ) -> List[ScientificHypothesis]:
-        if not self.hypotheses:
-            self._load_hypotheses()
-
-        print("\n" + "="*60)
-        print("PHASE 2: HUMAN VALIDATION")
-        print("="*60)
-
-        worthy_hypotheses = []
-
-        for h in self.hypotheses:
-            print(f"\n[Validation] {h.title}")
-            print(f"Description: {h.description[:100]}...")
-
-            decision = self._get_validation_decision(h)
-
-            if decision == ValidationDecision.WORTHY:
-                self.human_validator.validate_hypothesis(
-                    hypothesis=h,
-                    validator_name=validator_name,
-                    decision=ValidationDecision.WORTHY,
-                    confidence_level=5,
-                    reasoning="Human expert validation"
-                )
-                worthy_hypotheses.append(h)
-                print("  -> Approved for experimentation")
-            elif decision == ValidationDecision.UNWORTHY:
-                self.human_validator.validate_hypothesis(
-                    hypothesis=h,
-                    validator_name=validator_name,
-                    decision=ValidationDecision.UNWORTHY,
-                    confidence_level=5,
-                    reasoning="Human expert rejected"
-                )
-                print("  -> Rejected")
-            else:
-                print(f"  -> Deferred (decision: {decision.value})")
-
-        print(f"\n{len(worthy_hypotheses)} hypotheses approved for experimentation.")
-        return worthy_hypotheses
-
-    def _get_validation_decision(self, hypothesis: ScientificHypothesis) -> ValidationDecision:
-        print("\nValidation options:")
-        print("  1. Worthy (approve for experiments)")
-        print("  2. Unworthy (reject)")
-        print("  3. Defer (skip for now)")
-
-        while True:
-            choice = input("\nEnter decision (1-3): ").strip()
-            if choice in ['1', '2', '3']:
-                break
-            print("Invalid choice. Try again.")
-
-        decision_map = {
-            '1': ValidationDecision.WORTHY,
-            '2': ValidationDecision.UNWORTHY,
-            '3': ValidationDecision.DEFER
-        }
-        return decision_map[choice]
-
-    def run_experiments(
-        self,
-        hypotheses: Optional[List[ScientificHypothesis]] = None
-    ):
-        if hypotheses is None:
-            if not self.hypotheses:
-                self._load_hypotheses()
-            hypotheses = [h for h in self.hypotheses
-                        if h.status == HypothesisStatus.VALIDATED_WORTHY.value]
-
-        if not hypotheses:
-            print("No validated hypotheses to experiment on.")
-            return []
-
-        print("\n" + "="*60)
-        print("PHASE 3: AUTONOMOUS EXPERIMENTATION")
-        print("="*60)
-
-        all_experiments = []
-
-        for h in hypotheses:
-            print(f"\n--- Experiment for: {h.title} ---")
-
-            design = self.experiment_executor.design_experiment(h)
-            print(f"Designed: {design.title}")
-
-            experiment = self.experiment_executor.execute_experiment(
-                hypothesis=h,
-                experiment_design=design,
-                iteration=1
-            )
-
-            all_experiments.append(experiment)
-
-            print(f"Result: {experiment.actual_outcome}")
-            print(f"Effect size: {experiment.results.get('effect_size', 'N/A')}")
-            print(f"P-value: {experiment.results.get('p_value', 'N/A')}")
-
-        print(f"\n{len(all_experiments)} experiments completed.")
-        return all_experiments
-
-    def evaluate_results(
-        self,
-        hypotheses: Optional[List[ScientificHypothesis]] = None,
-        experiments = None
-    ):
-        if hypotheses is None:
-            self._load_hypotheses()
-            hypotheses = self.hypotheses
-
-        if experiments is None:
-            experiments = []
-            for h in hypotheses:
-                exp_files = os.listdir(os.path.join(self.workspace_path, "experiments"))
-                for f in exp_files:
-                    if h.id in f:
-                        with open(os.path.join(self.workspace_path, "experiments", f)) as fp:
-                            experiments.append(json.load(fp))
-
-        print("\n" + "="*60)
-        print("PHASE 4: EVALUATION")
-        print("="*60)
-
-        evaluation_results = []
-
-        for h in hypotheses:
-            h_experiments = [e for e in experiments if isinstance(e, dict) and e.get('hypothesis_id') == h.id]
-            if not h_experiments:
-                continue
-
-            from core.experiment_executor import Experiment
-            exp_objects = [Experiment.from_dict(e) for e in h_experiments]
-
-            result = self.evaluator.evaluate_hypothesis(h, exp_objects)
-            evaluation_results.append(result)
-
-            print(f"\n{result.hypothesis_title}")
-            print(f"  Verdict: {result.verdict}")
-            print(f"  Evidence: {result.evidence_strength}")
-            print(f"  Effect Size: {result.effect_size}")
-            print(f"  P-value: {result.p_value}")
-            print(f"  Recommendation: {result.recommendation}")
-
-        summary = self.evaluator.generate_summary_report(hypotheses, evaluation_results)
-        print(f"\n{summary}")
-
-        return evaluation_results
-
-    def run_demo(self):
-        print("\n" + "="*60)
-        print("KTautoresearch Demo")
-        print("="*60)
-
-        self.research_question = "How does sleep quality affect cognitive performance?"
-        print(f"\nDemo research question: {self.research_question}")
-
-        self.setup_workspace()
-
-        hypotheses = self.generate_hypotheses(num_hypotheses=3)
-
-        worthy = []
-        for h in hypotheses:
-            self.human_validator.validate_hypothesis(
-                hypothesis=h,
-                validator_name="demo",
-                decision=ValidationDecision.WORTHY,
-                confidence_level=5,
-                reasoning="Demo approval"
-            )
-            worthy.append(h)
-
-        experiments = []
-        for h in worthy:
-            design = self.experiment_executor.design_experiment(h)
-            exp = self.experiment_executor.execute_experiment(h, design, iteration=1)
-            experiments.append(exp)
-
-        self.evaluate_results(worthy, experiments)
-
-        print("\n" + "="*60)
-        print("Demo Complete!")
-        print("="*60)
-
-    def _save_hypothesis(self, hypothesis: ScientificHypothesis):
-        filename = os.path.join(
-            self.workspace_path,
-            "hypotheses",
-            f"hypothesis_{hypothesis.id}.json"
-        )
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(hypothesis.to_dict(), f, indent=2, ensure_ascii=False)
-
-    def _load_hypotheses(self):
-        hypotheses_dir = os.path.join(self.workspace_path, "hypotheses")
-        if not os.path.exists(hypotheses_dir):
-            return
-
-        self.hypotheses = []
-        for filename in os.listdir(hypotheses_dir):
-            if filename.endswith('.json'):
-                with open(os.path.join(hypotheses_dir, filename)) as f:
-                    self.hypotheses.append(ScientificHypothesis.from_dict(json.load(f)))
 
 
 def main():
@@ -303,46 +19,35 @@ def main():
         description="KTautoresearch - Scientific Hypothesis Generation and Autonomous Experimentation"
     )
     parser.add_argument(
-        "--question", "-q",
-        type=str,
-        default=None,
-        help="Research question to investigate"
-    )
-    parser.add_argument(
-        "--workspace", "-w",
-        type=str,
-        default="./workspace",
-        help="Workspace directory path"
-    )
-    parser.add_argument(
-        "--generate", "-g",
+        "--gui", "-g",
         action="store_true",
-        help="Generate hypotheses only"
+        help="Launch graphical user interface (GUI)"
     )
     parser.add_argument(
-        "--validate", "-v",
+        "--cli", "-c",
         action="store_true",
-        help="Run validation interface"
-    )
-    parser.add_argument(
-        "--experiment", "-e",
-        action="store_true",
-        help="Run experiments on validated hypotheses"
-    )
-    parser.add_argument(
-        "--evaluate", "-ev",
-        action="store_true",
-        help="Evaluate experiment results"
-    )
-    parser.add_argument(
-        "--all", "-a",
-        action="store_true",
-        help="Run full workflow (generate, validate, experiment, evaluate)"
+        help="Run in command-line mode"
     )
     parser.add_argument(
         "--demo", "-d",
         action="store_true",
-        help="Run demo workflow"
+        help="Run demo workflow in CLI mode"
+    )
+    parser.add_argument(
+        "--question", "-q",
+        type=str,
+        default=None,
+        help="Research question (for CLI mode)"
+    )
+    parser.add_argument(
+        "--all", "-a",
+        action="store_true",
+        help="Run full workflow (for CLI mode)"
+    )
+    parser.add_argument(
+        "--generate", "-gen",
+        action="store_true",
+        help="Generate hypotheses only"
     )
     parser.add_argument(
         "--num-hypotheses", "-n",
@@ -350,50 +55,40 @@ def main():
         default=5,
         help="Number of hypotheses to generate"
     )
+    parser.add_argument(
+        "--workspace", "-w",
+        type=str,
+        default="./workspace",
+        help="Workspace directory"
+    )
 
     args = parser.parse_args()
 
-    if args.demo:
-        system = KTautoresearch(workspace_path=args.workspace)
-        system.run_demo()
+    if args.gui or (not args.cli and not args.demo and not args.question):
+        print("Launching GUI...")
+        from gui import main as gui_main
+        gui_main()
         return
 
-    if not args.question and not args.demo:
-        print("Error: --question is required (or use --demo)")
-        print("\nExample: python main.py --question 'How does sleep affect memory?'")
-        return
+    if args.cli or args.all or args.generate or args.question:
+        from ktcli import KTAutoResearchCLI
+        cli = KTAutoResearchCLI(workspace_path=args.workspace)
 
-    system = KTautoresearch(
-        workspace_path=args.workspace,
-        research_question=args.question
-    )
-    system.setup_workspace()
-
-    if args.all:
-        system.generate_hypotheses(num_hypotheses=args.num_hypotheses)
-        worthy = system.validate_hypotheses()
-        if worthy:
-            system.run_experiments(worthy)
-            system.evaluate_results(worthy)
-
-    elif args.generate:
-        system.generate_hypotheses(num_hypotheses=args.num_hypotheses)
-
-    elif args.validate:
-        system.validate_hypotheses()
-
-    elif args.experiment:
-        system.run_experiments()
-
-    elif args.evaluate:
-        system.evaluate_results()
-
-    else:
-        print("No action specified. Use --help to see available options.")
-        print("\nExample workflows:")
-        print("  python main.py --demo")
-        print("  python main.py --question 'How does sleep affect memory?' --all")
-        print("  python main.py -q 'Effect of caffeine on attention' --generate")
+        if args.demo:
+            cli.run_demo()
+        elif args.question:
+            cli.research_question = args.question
+            cli.setup_workspace()
+            if args.all:
+                cli.run_full_workflow(num_hypotheses=args.num_hypotheses)
+            elif args.generate:
+                cli.generate_hypotheses(num_hypotheses=args.num_hypotheses)
+        else:
+            print("Use --gui for graphical interface, or provide --question")
+            print("\nExamples:")
+            print("  python main.py --gui")
+            print("  python main.py --question 'How does sleep affect memory?' --all")
+            return
 
 
 if __name__ == "__main__":
