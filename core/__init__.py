@@ -20,6 +20,13 @@ from core.experiment_executor import (
     ExperimentStatus,
     ExperimentType
 )
+from core.experiment_executor_v2 import (
+    LLMExperimentExecutor,
+    ExperimentResult as ExperimentResultV2,
+    ExperimentType as ExperimentTypeV2,
+    ExperimentConfig,
+    ExperimentStatus as ExperimentStatusV2
+)
 from core.evaluator import (
     Evaluator,
     EvaluationResult,
@@ -46,6 +53,11 @@ __all__ = [
     "ExperimentDesign",
     "ExperimentStatus",
     "ExperimentType",
+    "LLMExperimentExecutor",
+    "ExperimentResultV2",
+    "ExperimentTypeV2",
+    "ExperimentConfig",
+    "ExperimentStatusV2",
     "Evaluator",
     "EvaluationResult",
     "EvaluationVerdict",

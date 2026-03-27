@@ -3,8 +3,7 @@
 LLM Configuration Dialog
 """
 
-import tkinter as tk
-from tkinter import ttk, messagebox
+import sys
 
 try:
     import tkinter as tk

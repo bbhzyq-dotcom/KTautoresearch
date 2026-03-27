@@ -377,7 +377,7 @@ class KTautoresearchGUI:
 
         ttk.Label(
             header,
-            text="自动实验执行",
+            text="自动实验执行 (LLM驱动)",
             style='Heading.TLabel'
         ).pack(side=tk.LEFT)
 
@@ -387,6 +387,34 @@ class KTautoresearchGUI:
             style='Status.TLabel'
         )
         self.experiment_status.pack(side=tk.RIGHT)
+
+        config_frame = ttk.LabelFrame(container, text="实验配置", padding=10)
+        config_frame.pack(fill=tk.X, pady=(0, 10))
+
+        type_row = ttk.Frame(config_frame)
+        type_row.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(type_row, text="实验类型:").pack(side=tk.LEFT)
+
+        self.experiment_type_var = tk.StringVar(value="literature_search")
+
+        experiment_types = [
+            ("文献搜索", "literature_search"),
+            ("案例分析", "case_study"),
+            ("比较分析", "comparative_analysis"),
+            ("批判性评论", "critical_review"),
+            ("创意写作", "text_generation"),
+            ("问卷设计", "survey_design"),
+            ("访谈分析", "interview_analysis"),
+            ("通用分析", "generic"),
+        ]
+
+        for text, value in experiment_types:
+            ttk.Radiobutton(
+                type_row,
+                text=text,
+                variable=self.experiment_type_var,
+                value=value
+            ).pack(side=tk.LEFT, padx=(0, 10))
 
         self.experiment_text = scrolledtext.ScrolledText(
             container,
@@ -413,6 +441,13 @@ class KTautoresearchGUI:
             text="清空输出",
             command=lambda: self._clear_experiment_output()
         ).pack(side=tk.LEFT)
+
+        llm_warning = ttk.Label(
+            btn_frame,
+            text="注意: 需要配置 LLM 才能执行真实实验",
+            foreground="orange"
+        )
+        llm_warning.pack(side=tk.RIGHT)
 
         self._load_validated_hypotheses()
 
@@ -844,31 +879,70 @@ ID: {h.id}
         thread.start()
 
     def _run_experiments_worker(self, worthy: List[ScientificHypothesis]):
+        from core.experiment_executor_v2 import LLMExperimentExecutor, ExperimentType as ExpType
+
+        type_map = {
+            "literature_search": ExpType.LITERATURE_SEARCH,
+            "case_study": ExpType.CASE_STUDY,
+            "comparative_analysis": ExpType.COMPARATIVE_ANALYSIS,
+            "critical_review": ExpType.CRITICAL_REVIEW,
+            "text_generation": ExpType.TEXT_GENERATION,
+            "survey_design": ExpType.SURVEY_DESIGN,
+            "interview_analysis": ExpType.INTERVIEW_ANALYSIS,
+            "generic": ExpType.DATA_ANALYSIS,
+        }
+
+        exp_type = type_map.get(self.experiment_type_var.get(), ExpType.LITERATURE_SEARCH)
+
+        llm_executor = LLMExperimentExecutor(
+            llm_provider=self.hypothesis_generator.llm_provider,
+            workspace_path=self.workspace_path
+        )
+
+        if not llm_executor.is_llm_available():
+            self.root.after(0, lambda: self._append_experiment_log(
+                "\n⚠️ 警告: LLM 未配置，实验将以模拟模式运行\n"
+                "请先配置 LLM 以获得真实结果\n\n"
+            ))
+
         for i, h in enumerate(worthy):
             self.root.after(0, lambda h=h, i=i: self._append_experiment_log(
                 f"\n{'='*50}\n"
                 f"实验 {i+1}/{len(worthy)}\n"
                 f"假说: {h.title}\n"
+                f"实验类型: {exp_type.value}\n"
                 f"{'='*50}\n\n"
             ))
 
-            design = self.experiment_executor.design_experiment(h)
+            def progress_callback(msg, pct):
+                self.root.after(0, lambda m=msg, p=pct: self._append_experiment_log(f"  [{p:3d}%] {m}\n"))
+
+            design = llm_executor.design_experiment(h, exp_type)
 
             self.root.after(0, lambda d=design: self._append_experiment_log(
-                f"实验设计: {d.title}\n"
-                f"样本大小: {d.sample_size}\n"
-                f"实验条件: {len(d.experimental_conditions)} 个\n\n"
+                f"方法论: {d.get('methodology', 'N/A')}\n"
+                f"步骤数: {len(d.get('steps', []))}\n\n"
             ))
 
-            exp = self.experiment_executor.execute_experiment(h, design, iteration=1)
+            result = llm_executor.execute_experiment(
+                hypothesis=h,
+                design=design,
+                experiment_type=exp_type,
+                iteration=1,
+                progress_callback=progress_callback
+            )
 
-            self.root.after(0, lambda e=exp: self._append_experiment_log(
-                f"结果:\n"
-                f"  - 状态: {e.status}\n"
-                f"  - 效果量: {e.results.get('effect_size', 'N/A')}\n"
-                f"  - P值: {e.results.get('p_value', 'N/A')}\n"
-                f"  - 解读: {e.results.get('interpretation', 'N/A')}\n"
-                f"  - 执行时间: {e.duration_seconds:.1f}秒\n\n"
+            findings_str = ""
+            if result.findings:
+                findings_str = "\n关键发现:\n" + "\n".join(f"  - {x}" for x in result.findings[:3]) + "\n"
+
+            self.root.after(0, lambda r=result, fs=findings_str: self._append_experiment_log(
+                f"\n结果:\n"
+                f"  - 状态: {r.status}\n"
+                f"  - 结论: {r.assessment.get('verdict', 'N/A')}\n"
+                f"  - 证据强度: {r.assessment.get('evidence_strength', 'N/A')}\n"
+                f"  - 执行时间: {r.duration_seconds:.1f}秒\n"
+                f"{fs}"
             ))
 
         self.root.after(0, self._on_experiments_complete)
