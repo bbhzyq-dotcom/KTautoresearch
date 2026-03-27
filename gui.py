@@ -60,6 +60,24 @@ class KTautoresearchGUI:
         self._setup_styles()
         self._create_widgets()
         self._setup_logging()
+        self._try_load_llm_config()
+
+    def _try_load_llm_config(self):
+        config_path = "./llm_config.json"
+        if os.path.exists(config_path):
+            try:
+                from core.llm_provider import LLMProvider
+                provider = LLMProvider.from_config_file(config_path)
+                if provider.is_available():
+                    self.hypothesis_generator.set_llm_provider(provider)
+                    models = provider.list_models()
+                    self.llm_status_label.config(
+                        text=f"[LLM: {provider.config.model}]",
+                        foreground='green'
+                    )
+                    self._append_log(f"LLM loaded: {provider.config.model} ({len(models)} models available)")
+            except Exception as e:
+                self._append_log(f"LLM config load failed: {e}")
 
     def _setup_workspace(self):
         os.makedirs(os.path.join(self.workspace_path, "hypotheses"), exist_ok=True)
@@ -123,7 +141,22 @@ class KTautoresearchGUI:
             text="View on GitHub",
             command=lambda: webbrowser.open("https://github.com/bbhzyq-dotcom/KTautoresearch")
         )
-        github_btn.pack(side=tk.RIGHT)
+        github_btn.pack(side=tk.RIGHT, padx=(0, 10))
+
+        self.llm_status_label = ttk.Label(
+            header,
+            text="[LLM: Not Configured]",
+            style='Status.TLabel',
+            foreground='gray'
+        )
+        self.llm_status_label.pack(side=tk.RIGHT, padx=(0, 10))
+
+        llm_config_btn = ttk.Button(
+            header,
+            text="LLM Config",
+            command=self._open_llm_config
+        )
+        llm_config_btn.pack(side=tk.RIGHT)
 
     def _create_main_content(self):
         self.notebook = ttk.Notebook(self.main_container)
@@ -465,6 +498,56 @@ class KTautoresearchGUI:
     def _setup_logging(self):
         self.log_file = os.path.join(self.workspace_path, "ktautoresearch.log")
         handler = LogHandler(self)
+
+    def _open_llm_config(self):
+        try:
+            from llm_config import LLMConfigDialog
+            from core.llm_provider import LLMProvider, LLMConfig
+
+            current_config = None
+            config_path = "./llm_config.json"
+            if os.path.exists(config_path):
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    current_config = json.load(f)
+
+            dialog = LLMConfigDialog(self.root, current_config)
+            result = dialog.show()
+
+            if result:
+                provider = LLMProvider(result)
+                provider.save_config(config_path)
+
+                llm_provider = LLMProvider(result)
+
+                if llm_provider.is_available():
+                    models = llm_provider.list_models()
+                    self.llm_status_label.config(
+                        text=f"[LLM: {result.model}]",
+                        foreground='green'
+                    )
+                    self._update_status(f"LLM configured successfully. Found {len(models)} models: {', '.join(models[:3])}...")
+
+                    self.hypothesis_generator.set_llm_provider(llm_provider)
+
+                    messagebox.showinfo(
+                        "LLM Configured",
+                        f"Successfully connected to {result.provider}!\n"
+                        f"Model: {result.model}\n"
+                        f"Available models: {', '.join(models[:3])}..."
+                    )
+                else:
+                    self.llm_status_label.config(
+                        text="[LLM: Connection Failed]",
+                        foreground='red'
+                    )
+                    messagebox.showwarning(
+                        "Connection Failed",
+                        "Could not connect to LLM provider.\n\n"
+                        "Using template-based generation instead."
+                    )
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to configure LLM: {str(e)}")
 
     def _append_log(self, message: str):
         timestamp = datetime.now().strftime("%H:%M:%S")

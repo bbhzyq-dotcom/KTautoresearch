@@ -67,7 +67,8 @@ KTautoresearch/
 │   ├── hypothesis_generator.py   # AI generates scientific hypotheses
 │   ├── human_validator.py        # Human validation interface
 │   ├── experiment_executor.py    # AI executes experiments
-│   └── evaluator.py              # AI evaluates results
+│   ├── evaluator.py              # AI evaluates results
+│   └── llm_provider.py           # LLM API interface (OpenAI/Ollama/etc)
 ├── workspace/                    # Working directory
 │   ├── hypotheses/               # Generated hypotheses
 │   ├── experiments/              # Experiment results
@@ -76,7 +77,10 @@ KTautoresearch/
 ├── program.md                    # AI agent instructions
 ├── main.py                       # Entry point (launches GUI or CLI)
 ├── gui.py                        # Graphical User Interface
-└── ktcli.py                      # Command Line Interface
+├── ktcli.py                      # Command Line Interface
+├── llm_config.py                 # LLM Configuration Dialog
+└── llm_config.json               # LLM API configuration
+```
 ```
 ```
 
@@ -137,6 +141,53 @@ Final verdicts:
 - **Not Supported**: Insufficient evidence
 - **Contradicted**: Evidence against hypothesis
 - **Inconclusive**: More data needed
+
+## LLM Configuration (Optional)
+
+The system can use LLM APIs for more creative hypothesis generation. By default, it uses template-based generation.
+
+### Supported Providers
+
+| Provider | Type | Example API URL |
+|----------|------|----------------|
+| Ollama | Local | `http://localhost:11434/v1` |
+| LM Studio | Local | `http://localhost:1234/v1` |
+| OpenAI | Cloud | `https://api.openai.com/v1` |
+| Groq | Cloud | `https://api.groq.com/openai/v1` |
+| Together AI | Cloud | `https://api.together.ai/v1` |
+| Anthropic | Cloud | `https://api.anthropic.com/v1` |
+| Custom | Other | Any OpenAI-compatible API |
+
+### Configuration (GUI)
+
+1. Click "LLM Config" button in the header
+2. Select your provider
+3. Enter API URL, Key (if required), and model name
+4. Click "Test Connection" to verify
+5. Click "Save"
+
+### Configuration (Environment Variables)
+
+```bash
+export LLM_PROVIDER=ollama
+export LLM_API_BASE=http://localhost:11434/v1
+export LLM_MODEL=llama3
+```
+
+### Configuration (File)
+
+Save to `llm_config.json`:
+
+```json
+{
+  "provider": "ollama",
+  "api_base": "http://localhost:11434/v1",
+  "api_key": "not-needed",
+  "model": "llama3",
+  "temperature": 0.7,
+  "max_tokens": 4096
+}
+```
 
 ## Extending the System
 

@@ -54,9 +54,19 @@ class ScientificHypothesis:
 
 
 class HypothesisGenerator:
-    def __init__(self, model_name: str = "gpt-4"):
+    def __init__(
+        self,
+        model_name: str = "gpt-4",
+        llm_provider=None
+    ):
         self.model_name = model_name
+        self.llm_provider = llm_provider
         self.generation_count = 0
+        self._use_llm = llm_provider is not None
+
+    def set_llm_provider(self, llm_provider):
+        self.llm_provider = llm_provider
+        self._use_llm = llm_provider is not None
 
     def generate_hypotheses(
         self,
@@ -67,11 +77,166 @@ class HypothesisGenerator:
     ) -> List[ScientificHypothesis]:
         self.generation_count += 1
 
+        if self._use_llm and self.llm_provider:
+            return self._generate_with_llm(
+                research_question, domain_knowledge, num_hypotheses, existing_hypotheses
+            )
+        else:
+            return self._generate_with_templates(
+                research_question, domain_knowledge, num_hypotheses
+            )
+
+    def _generate_with_llm(
+        self,
+        research_question: str,
+        domain_knowledge: str,
+        num_hypotheses: int,
+        existing_hypotheses: Optional[List[ScientificHypothesis]] = None
+    ) -> List[ScientificHypothesis]:
+        system_prompt = """You are an expert scientific researcher. Your task is to generate innovative scientific hypotheses based on research questions.
+
+For each hypothesis, you must provide:
+1. title: A concise, descriptive title
+2. description: Detailed explanation of the hypothesis
+3. rationale: Why this hypothesis makes scientific sense
+4. predicted_mechanism: The expected biological/physical/chemical mechanism
+5. potential_evidence: List of evidence that would support this hypothesis
+6. potential_counter_evidence: List of evidence that would refute this hypothesis
+7. expected_effect_direction: Positive/Negative/Bidirectional/None
+8. estimated_feasibility: High/Medium/Low (based on current technology and resources)
+9. suggested_experiments: List of 2-3 specific experiments to test this hypothesis
+
+Output format: Return a JSON array of hypotheses."""
+
+        existing_context = ""
+        if existing_hypotheses:
+            existing_context = "\n\nPreviously generated hypotheses (for inspiration, do not repeat):\n"
+            for h in existing_hypotheses[:3]:
+                existing_context += f"- {h.title}: {h.description[:100]}...\n"
+
+        user_prompt = f"""Research Question: {research_question}
+
+Domain Knowledge: {domain_knowledge if domain_knowledge else "General scientific domain"}{existing_context}
+
+Please generate exactly {num_hypotheses} diverse, scientifically sound hypotheses that explore different angles:
+- Direct causal relationships
+- Inverse relationships
+- Synergistic/interaction effects
+- Threshold effects
+- Novel mechanisms
+
+Ensure hypotheses are:
+- Testable with current technology
+- Specific enough to generate clear predictions
+- Diverse in their theoretical foundations
+- Relevant to the research question"""
+
+        try:
+            if not self.llm_provider.is_available():
+                print("Warning: LLM provider not available, falling back to template generation")
+                return self._generate_with_templates(research_question, domain_knowledge, num_hypotheses)
+
+            response = self.llm_provider.generate(
+                prompt=user_prompt,
+                system=system_prompt,
+                temperature=0.8,
+                max_tokens=4096
+            )
+
+            hypotheses = self._parse_llm_response(response, research_question)
+
+            return hypotheses
+
+        except Exception as e:
+            print(f"LLM generation failed: {e}, falling back to templates")
+            return self._generate_with_templates(research_question, domain_knowledge, num_hypotheses)
+
+    def _parse_llm_response(self, response: str, research_question: str) -> List[ScientificHypothesis]:
         hypotheses = []
 
-        base_hypotheses = self._generate_structured_hypotheses(
-            research_question, domain_knowledge, num_hypotheses
-        )
+        try:
+            json_str = response
+            if "```json" in response:
+                json_str = response.split("```json")[1].split("```")[0]
+            elif "```" in response:
+                json_str = response.split("```")[1].split("```")[0]
+
+            json_str = json_str.strip()
+
+            data = json.loads(json_str)
+
+            if isinstance(data, dict) and "hypotheses" in data:
+                data = data["hypotheses"]
+            elif not isinstance(data, list):
+                data = [data]
+
+            for item in data:
+                h = ScientificHypothesis(
+                    id=str(uuid.uuid4())[:8],
+                    title=item.get("title", f"Hypothesis about {research_question}"),
+                    description=item.get("description", ""),
+                    rationale=item.get("rationale", ""),
+                    predicted_mechanism=item.get("predicted_mechanism", ""),
+                    potential_evidence=item.get("potential_evidence", []),
+                    potential_counter_evidence=item.get("potential_counter_evidence", []),
+                    expected_effect_direction=item.get("expected_effect_direction", "Unknown"),
+                    estimated_feasibility=item.get("estimated_feasibility", "Medium"),
+                    suggested_experiments=item.get("suggested_experiments", []),
+                    created_at=datetime.now().isoformat(),
+                    ai_confidence=item.get("ai_confidence", 0.6)
+                )
+                hypotheses.append(h)
+
+        except json.JSONDecodeError:
+            hypotheses = self._parse_text_response(response, research_question)
+
+        if not hypotheses:
+            hypotheses = self._generate_with_templates(research_question, "", 3)
+
+        return hypotheses
+
+    def _parse_text_response(self, response: str, research_question: str) -> List[ScientificHypothesis]:
+        hypotheses = []
+        lines = response.split('\n')
+
+        current_h = {}
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            if line.startswith('#') or line.startswith('**'):
+                if current_h and 'title' in current_h:
+                    current_h['title'] = line.lstrip('#* ').strip()
+            elif ':' in line:
+                key, value = line.split(':', 1)
+                key = key.strip().lower().replace(' ', '_')
+                value = value.strip()
+
+                if key == 'potential_evidence' or key == 'suggested_experiments':
+                    current_h[key] = [v.strip() for v in value.split(',')]
+                else:
+                    current_h[key] = value
+
+            if len(current_h) >= 5:
+                h = ScientificHypothesis(
+                    id=str(uuid.uuid4())[:8],
+                    title=current_h.get('title', f"Hypothesis {len(hypotheses)+1}"),
+                    description=current_h.get('description', ''),
+                    rationale=current_h.get('rationale', ''),
+                    predicted_mechanism=current_h.get('predicted_mechanism', ''),
+                    potential_evidence=current_h.get('potential_evidence', []),
+                    potential_counter_evidence=current_h.get('potential_counter_evidence', []),
+                    expected_effect_direction=current_h.get('expected_effect_direction', 'Unknown'),
+                    estimated_feasibility=current_h.get('estimated_feasibility', 'Medium'),
+                    suggested_experiments=current_h.get('suggested_experiments', []),
+                    created_at=datetime.now().isoformat(),
+                    ai_confidence=0.5
+                )
+                hypotheses.append(h)
+                current_h = {}
+
+        return hypotheses
 
         for h_data in base_hypotheses:
             hypothesis = ScientificHypothesis(
@@ -92,7 +257,7 @@ class HypothesisGenerator:
 
         return hypotheses
 
-    def _generate_structured_hypotheses(
+    def _generate_with_templates(
         self,
         research_question: str,
         domain_knowledge: str,

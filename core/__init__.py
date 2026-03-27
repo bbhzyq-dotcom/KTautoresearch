@@ -26,6 +26,12 @@ from core.evaluator import (
     EvaluationVerdict,
     EvidenceStrength
 )
+from core.llm_provider import (
+    LLMProvider,
+    LLMConfig,
+    ProviderType,
+    create_llm_config
+)
 
 __all__ = [
     "HypothesisGenerator",
@@ -44,4 +50,8 @@ __all__ = [
     "EvaluationResult",
     "EvaluationVerdict",
     "EvidenceStrength",
+    "LLMProvider",
+    "LLMConfig",
+    "ProviderType",
+    "create_llm_config",
 ]
