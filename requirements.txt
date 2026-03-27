@@ -1,0 +1,7 @@
+# KTautoresearch dependencies
+# No external dependencies for core functionality
+# This project uses only Python standard library
+
+# Optional: For enhanced AI capabilities
+# openai>=1.0.0
+# anthropic>=0.0.3
